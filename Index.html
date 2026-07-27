@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Servidor de Archivos Local</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
+        .card { background: #1e1e1e; max-width: 450px; margin: 0 auto; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        input[type="file"] { display: none; }
+        .btn { display: inline-block; background: #007bff; color: white; padding: 12px 20px; margin: 10px 0; border-radius: 8px; cursor: pointer; text-decoration: none; border: none; font-size: 16px; width: 80%; }
+        .btn-success { background: #28a745; }
+        .btn-delete { background: #dc3545; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 10px; }
+        .btn-delete:hover { background: #bd2130; }
+        ul { list-style: none; padding: 0; text-align: left; }
+        li { background: #2a2a2a; margin: 8px 0; padding: 10px; border-radius: 6px; word-break: break-all; display: flex; justify-content: space-between; align-items: center; }
+        a { color: #61dafb; text-decoration: none; max-width: 75%; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Enviar Archivos Localmente</h2>
+        
+        <form id="uploadForm">
+            <label class="btn">
+                Seleccionar Archivo
+                <input type="file" id="fileInput" required>
+            </label>
+            <br>
+            <button type="submit" class="btn btn-success">Enviar a la Red Local</button>
+        </form>
+
+        <p id="status"></p>
+
+        <h3>Archivos Disponibles:</h3>
+        <ul id="fileList"></ul>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('fileInput');
+        const status = document.getElementById('status');
+        const fileList = document.getElementById('fileList');
+
+        // Subir archivo
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!fileInput.files.length) return;
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            status.textContent = "Enviando archivo...";
+
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                if (res.ok) {
+                    status.textContent = "¡Archivo enviado con éxito!";
+                    fileInput.value = '';
+                    loadFiles();
+                } else {
+                    status.textContent = "Error al enviar el archivo.";
+                }
+            } catch (err) {
+                status.textContent = "Error de conexión con el servidor.";
+            }
+        });
+
+        // Cargar lista de archivos
+        async function loadFiles() {
+            try {
+                const res = await fetch('/files');
+                const files = await res.json();
+                fileList.innerHTML = '';
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    
+                    const link = document.createElement('a');
+                    link.href = `/downloads/${encodeURIComponent(file)}`;
+                    link.download = file;
+                    link.textContent = file;
+
+                    const delBtn = document.createElement('button');
+                    delBtn.textContent = 'Eliminar';
+                    delBtn.className = 'btn-delete';
+                    delBtn.onclick = () => deleteFile(file);
+
+                    li.appendChild(link);
+                    li.appendChild(delBtn);
+                    fileList.appendChild(li);
+                });
+            } catch (err) {
+                console.error("Error al cargar archivos:", err);
+            }
+        }
+
+        // Eliminar archivo
+        async function deleteFile(filename) {
+            if (!confirm(`¿Seguro que deseas eliminar "${filename}"?`)) return;
+
+            try {
+                const res = await fetch(`/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+                if (res.ok) {
+                    loadFiles();
+                } else {
+                    alert("No se pudo eliminar el archivo.");
+                }
+            } catch (err) {
+                console.error("Error al eliminar el archivo:", err);
+                alert("Error de conexión al intentar eliminar.");
+            }
+        }
+
+        loadFiles();
+    </script>
+</body>
+</html>
