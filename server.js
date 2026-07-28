@@ -3,33 +3,24 @@ const multer  = require('multer');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const webpush = require('web-push');
-const http = require('http'); // Importamos http
-const { Server } = require('socket.io'); // Importamos Socket.IO
+const webpush = require('web-push'); // <-- Agregado
 
 const app = express();
-const server = http.createServer(app); // Creamos el servidor HTTP con Express
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
-
 const PORT = process.env.PORT || 3000;
 
+// Permite procesar JSON en el body de las peticiones
 app.use(express.json());
 
-// CONFIGURACIÓN WEBPUSH (Remplaza las variables con tus credenciales)
-const PUBLIC_VAPID_KEY = 'BHy7T_n9pJEoSmYVCOxRb4_TK3IxM6vAekhJf_10t3OgRleZLQUsaVdXLW3uW0nXC-35QpPZmwB96m8Wx-OkcQY';
-const PRIVATE_VAPID_KEY = 'dK-haDjSnLc2HjaM-qTULS_3EPlUu_RrSt3gm_p93q0';
-
+// CONFIGURACIÓN WEBPUSH (Reemplaza con tus claves)
+const Public Key:BHy7T_n9pJEoSmYVCOxRb4_TK3IxM6vAekhJf_10t3OgRleZLQUsaVdXLW3uW0nXC-35QpPZmwB96m8Wx-OkcQY
+const Private Key:dK-haDjSnLc2HjaM-qTULS_3EPlUu_RrSt3gm_p93q0
 webpush.setVapidDetails(
     'mailto:admin@local.com',
     PUBLIC_VAPID_KEY,
     PRIVATE_VAPID_KEY
 );
 
+// Arreglo en memoria para guardar las suscripciones activas
 let subscriptions = [];
 
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -38,7 +29,9 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadsDir),
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
     filename: (req, file, cb) => {
         let fileName = file.originalname;
         let filePath = path.join(uploadsDir, fileName);
@@ -52,6 +45,7 @@ const storage = multer.diskStorage({
             filePath = path.join(uploadsDir, fileName);
             counter++;
         }
+
         cb(null, fileName);
     }
 });
@@ -61,30 +55,19 @@ const upload = multer({ storage });
 app.use(express.static(__dirname));
 app.use('/downloads', express.static(uploadsDir));
 
-// --- LÓGICA DE SOCKET.IO (CHAT EN TIEMPO REAL) ---
-io.on('connection', (socket) => {
-    console.log(`Usuario conectado al chat ID: ${socket.id}`);
-
-    // Cuando un cliente envía un mensaje
-    socket.on('chatMessage', (data) => {
-        // Reemitir el mensaje a TODOS los clientes conectados
-        io.emit('chatMessage', data);
-    });
-
-    socket.on('disconnect', () => {
-        console.log(`Usuario desconectado: ${socket.id}`);
-    });
+// Endpoint para enviar la clave pública al cliente
+app.get('/vapid-key', (req, res) => {
+    res.json({ publicKey: PUBLIC_VAPID_KEY });
 });
 
-// Endpoints API
-app.get('/vapid-key', (req, res) => res.json({ publicKey: PUBLIC_VAPID_KEY }));
-
+// Endpoint para suscribirse a las notificaciones
 app.post('/subscribe', (req, res) => {
     const subscription = req.body;
     subscriptions.push(subscription);
     res.status(201).json({ status: 'ok' });
 });
 
+// Función para notificar a todos los dispositivos registrados
 function notifyClients(fileNameCount) {
     const payload = JSON.stringify({
         title: '📩 ¡Nuevo Archivo Recibido!',
@@ -94,6 +77,7 @@ function notifyClients(fileNameCount) {
     subscriptions.forEach((sub, index) => {
         webpush.sendNotification(sub, payload).catch(err => {
             console.error('Error enviando notificación:', err);
+            // Si la suscripción ya no es válida o caducó, eliminarla
             if (err.statusCode === 410 || err.statusCode === 404) {
                 subscriptions.splice(index, 1);
             }
@@ -101,13 +85,17 @@ function notifyClients(fileNameCount) {
     });
 }
 
+// Endpoint para subir archivos + Notificación
 app.post('/upload', upload.array('files'), (req, res) => {
     if (!req.files || req.files.length === 0) {
         return res.status(400).send('No se seleccionó ningún archivo.');
     }
     
     const uploadedFiles = req.files.map(file => file.filename);
+    
+    // Notificar a los dispositivos conectados
     notifyClients(req.files.length);
+
     res.send({ status: 'ok', filenames: uploadedFiles });
 });
 
@@ -144,8 +132,7 @@ function getLocalIP() {
     return 'localhost';
 }
 
-// Escuchar eventos con 'server.listen' en lugar de 'app.listen'
-server.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n==================================================`);
     console.log(`¡Servidor Local Activo!`);
     console.log(`Desde tu PC entra a: http://localhost:${PORT}`);
