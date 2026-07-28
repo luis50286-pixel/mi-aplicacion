@@ -7,9 +7,10 @@
     <title>Mi Servidor de Archivos Local</title>
     <style>
         body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
-        .card { background: #1e1e1e; max-width: 450px; margin: 0 auto; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; max-width: 600px; margin: 0 auto; }
+        .card { background: #1e1e1e; flex: 1; min-width: 320px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); box-sizing: border-box; }
         input[type="file"] { display: none; }
-        .btn { display: inline-block; background: #007bff; color: white; padding: 12px 20px; margin: 8px 0; border-radius: 8px; cursor: pointer; text-decoration: none; border: none; font-size: 16px; width: 85%; box-sizing: border-box; }
+        .btn { display: inline-block; background: #007bff; color: white; padding: 12px 20px; margin: 8px 0; border-radius: 8px; cursor: pointer; text-decoration: none; border: none; font-size: 16px; width: 100%; box-sizing: border-box; }
         .btn-scan { background: #17a2b8; }
         .btn-success { background: #28a745; }
         .btn-delete { background: #dc3545; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 10px; }
@@ -27,25 +28,26 @@
 </head>
 <body>
 
-    <div class="card">
-        <h2>Enviar Archivos / Documentos</h2>
+    <div class="container">
+        <div class="card">
+            <h2>Archivos / Escáner</h2>
 
-        
-        <button id="openCamBtn" class="btn btn-scan">📷 Escanear Documento</button>
+            <button id="openCamBtn" class="btn btn-scan">📷 Escanear Documento</button>
 
-        <form id="uploadForm">
-            <label class="btn">
-                Seleccionar Archivo(s)
-                <input type="file" id="fileInput" multiple>
-            </label>
-            <div id="fileCount"></div>
-            <button type="submit" class="btn btn-success">Enviar a la Red Local</button>
-        </form>
+            <form id="uploadForm">
+                <label class="btn">
+                    Seleccionar Archivo(s)
+                    <input type="file" id="fileInput" multiple>
+                </label>
+                <div id="fileCount"></div>
+                <button type="submit" class="btn btn-success">Enviar a la Red Local</button>
+            </form>
 
-        <p id="status"></p>
+            <p id="status"></p>
 
-        <h3>Archivos Disponibles:</h3>
-        <ul id="fileList"></ul>
+            <h3>Archivos Disponibles:</h3>
+            <ul id="fileList"></ul>
+        </div>
     </div>
 
     <div id="cameraContainer">
@@ -59,15 +61,15 @@
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
-        const API_URL = "https://mi-aplicacion-7npp.onrender.com";
+        const API_URL = "https://mi-aplicacion-7npp.onrender.com"; // Si pruebas en local usa window.location.origin
 
+        // --- LÓGICA DE ARCHIVOS Y CÁMARA ---
         const form = document.getElementById('uploadForm');
         const fileInput = document.getElementById('fileInput');
         const fileCount = document.getElementById('fileCount');
         const status = document.getElementById('status');
         const fileList = document.getElementById('fileList');
 
-        // Elementos de la Cámara
         const openCamBtn = document.getElementById('openCamBtn');
         const cameraContainer = document.getElementById('cameraContainer');
         const video = document.getElementById('video');
@@ -76,10 +78,8 @@
         const canvas = document.getElementById('canvas');
         let mediaStream = null;
 
-        // Abrir Cámara
         openCamBtn.addEventListener('click', async () => {
             try {
-                // Solicitar cámara trasera por defecto si está disponible (ideal para celulares)
                 mediaStream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: { ideal: "environment" } },
                     audio: false
@@ -91,7 +91,6 @@
             }
         });
 
-        // Cerrar Cámara
         function stopCamera() {
             if (mediaStream) {
                 mediaStream.getTracks().forEach(track => track.stop());
@@ -101,14 +100,12 @@
 
         closeCamBtn.addEventListener('click', stopCamera);
 
-        // Capturar foto y enviar al servidor
         captureBtn.addEventListener('click', () => {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Convertir la captura en una imagen JPG
             canvas.toBlob(async (blob) => {
                 stopCamera();
                 status.textContent = "Procesando documento escaneado...";
@@ -138,13 +135,11 @@
             }, 'image/jpeg', 0.9);
         });
 
-        // Contar archivos subidos mediante input tradicional
         fileInput.addEventListener('change', () => {
             const total = fileInput.files.length;
             fileCount.textContent = total > 0 ? `${total} archivo(s) seleccionado(s)` : '';
         });
 
-        // Subir archivos mediante el formulario tradicional
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!fileInput.files.length) return;
@@ -176,7 +171,6 @@
             }
         });
 
-        // Cargar lista de archivos
         async function loadFiles() {
             try {
                 const res = await fetch(`${API_URL}/files`);
@@ -204,7 +198,6 @@
             }
         }
 
-        // Eliminar archivo
         async function deleteFile(filename) {
             if (!confirm(`¿Seguro que deseas eliminar "${filename}"?`)) return;
 
