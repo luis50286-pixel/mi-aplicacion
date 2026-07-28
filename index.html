@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: gap: content: blob:; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * https://mi-aplicacion-7npp.onrender.com http: https: ws: wss:;">
     <title>Mi Servidor de Archivos Local</title>
     <style>
         body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
@@ -15,6 +16,7 @@
         ul { list-style: none; padding: 0; text-align: left; }
         li { background: #2a2a2a; margin: 8px 0; padding: 10px; border-radius: 6px; word-break: break-all; display: flex; justify-content: space-between; align-items: center; }
         a { color: #61dafb; text-decoration: none; max-width: 75%; }
+        #fileCount { font-size: 14px; color: #aaa; margin-top: -5px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -24,10 +26,10 @@
         
         <form id="uploadForm">
             <label class="btn">
-                Seleccionar Archivo
-                <input type="file" id="fileInput" required>
+                Seleccionar Archivo(s)
+                <input type="file" id="fileInput" multiple required>
             </label>
-            <br>
+            <div id="fileCount"></div>
             <button type="submit" class="btn btn-success">Enviar a la Red Local</button>
         </form>
 
@@ -38,31 +40,55 @@
     </div>
 
     <script>
+        // URL Base apuntando directamente a tu servidor
+        const API_URL = "https://mi-aplicacion-7npp.onrender.com";
+
         const form = document.getElementById('uploadForm');
         const fileInput = document.getElementById('fileInput');
+        const fileCount = document.getElementById('fileCount');
         const status = document.getElementById('status');
         const fileList = document.getElementById('fileList');
 
-        // Subir archivo
+        // Mostrar la cantidad de archivos seleccionados
+        fileInput.addEventListener('change', () => {
+            const total = fileInput.files.length;
+            if (total > 0) {
+                fileCount.textContent = `${total} archivo(s) seleccionado(s)`;
+            } else {
+                fileCount.textContent = '';
+            }
+        });
+
+        // Subir múltiples archivos
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!fileInput.files.length) return;
 
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            
+            // Añadir cada archivo al FormData con el nombre del campo 'files'
+            for (let i = 0; i < fileInput.files.length; i++) {
+                formData.append('files', fileInput.files[i]);
+            }
 
-            status.textContent = "Enviando archivo...";
+            status.textContent = `Enviando ${fileInput.files.length} archivo(s)...`;
 
             try {
-                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const res = await fetch(`${API_URL}/upload`, { 
+                    method: 'POST', 
+                    body: formData 
+                });
+
                 if (res.ok) {
-                    status.textContent = "¡Archivo enviado con éxito!";
+                    status.textContent = "¡Archivo(s) enviado(s) con éxito!";
                     fileInput.value = '';
+                    fileCount.textContent = '';
                     loadFiles();
                 } else {
-                    status.textContent = "Error al enviar el archivo.";
+                    status.textContent = "Error al enviar los archivos.";
                 }
             } catch (err) {
+                console.error(err);
                 status.textContent = "Error de conexión con el servidor.";
             }
         });
@@ -70,14 +96,14 @@
         // Cargar lista de archivos
         async function loadFiles() {
             try {
-                const res = await fetch('/files');
+                const res = await fetch(`${API_URL}/files`);
                 const files = await res.json();
                 fileList.innerHTML = '';
                 files.forEach(file => {
                     const li = document.createElement('li');
                     
                     const link = document.createElement('a');
-                    link.href = `/downloads/${encodeURIComponent(file)}`;
+                    link.href = `${API_URL}/downloads/${encodeURIComponent(file)}`;
                     link.download = file;
                     link.textContent = file;
 
@@ -100,7 +126,7 @@
             if (!confirm(`¿Seguro que deseas eliminar "${filename}"?`)) return;
 
             try {
-                const res = await fetch(`/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+                const res = await fetch(`${API_URL}/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
                 if (res.ok) {
                     loadFiles();
                 } else {
