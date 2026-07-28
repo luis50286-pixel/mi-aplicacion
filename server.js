@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
         cb(null, uploadsDir);
     },
     filename: (req, file, cb) => {
-        // Para evitar sobrescribir si el archivo ya existe
+        // Evitar sobrescribir si el archivo ya existe
         let fileName = file.originalname;
         let filePath = path.join(uploadsDir, fileName);
         let counter = 1;
@@ -42,10 +42,14 @@ const upload = multer({ storage });
 app.use(express.static(__dirname));
 app.use('/downloads', express.static(uploadsDir));
 
-// Endpoint para subir un archivo
-app.post('/upload', upload.single('file'), (req, res) => {
-    if (!req.file) return res.status(400).send('No se seleccionó ningún archivo.');
-    res.send({ status: 'ok', filename: req.file.filename });
+// Endpoint para subir MÚLTIPLES archivos
+app.post('/upload', upload.array('files'), (req, res) => {
+    if (!req.files || req.files.length === 0) {
+        return res.status(400).send('No se seleccionó ningún archivo.');
+    }
+    
+    const uploadedFiles = req.files.map(file => file.filename);
+    res.send({ status: 'ok', filenames: uploadedFiles });
 });
 
 // Obtener lista de archivos subidos
