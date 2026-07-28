@@ -9,7 +9,8 @@
         body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
         .card { background: #1e1e1e; max-width: 450px; margin: 0 auto; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
         input[type="file"] { display: none; }
-        .btn { display: inline-block; background: #007bff; color: white; padding: 12px 20px; margin: 10px 0; border-radius: 8px; cursor: pointer; text-decoration: none; border: none; font-size: 16px; width: 80%; }
+        .btn { display: inline-block; background: #007bff; color: white; padding: 12px 20px; margin: 8px 0; border-radius: 8px; cursor: pointer; text-decoration: none; border: none; font-size: 16px; width: 85%; box-sizing: border-box; }
+        .btn-scan { background: #17a2b8; }
         .btn-success { background: #28a745; }
         .btn-delete { background: #dc3545; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 10px; }
         .btn-delete:hover { background: #bd2130; }
@@ -17,17 +18,24 @@
         li { background: #2a2a2a; margin: 8px 0; padding: 10px; border-radius: 6px; word-break: break-all; display: flex; justify-content: space-between; align-items: center; }
         a { color: #61dafb; text-decoration: none; max-width: 75%; }
         #fileCount { font-size: 14px; color: #aaa; margin-top: -5px; margin-bottom: 10px; }
+        
+        /* Modal para la Cámara */
+        #cameraContainer { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
+        video { width: 90%; max-width: 400px; border-radius: 8px; background: #000; }
+        .camera-controls { margin-top: 15px; display: flex; gap: 10px; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h2>Enviar Archivos Localmente</h2>
+        <h2>Enviar Archivos / Documentos</h2>
         
+        <button id="openCamBtn" class="btn btn-scan">📷 Escanear Documento</button>
+
         <form id="uploadForm">
             <label class="btn">
                 Seleccionar Archivo(s)
-                <input type="file" id="fileInput" multiple required>
+                <input type="file" id="fileInput" multiple>
             </label>
             <div id="fileCount"></div>
             <button type="submit" class="btn btn-success">Enviar a la Red Local</button>
@@ -39,8 +47,17 @@
         <ul id="fileList"></ul>
     </div>
 
+    <div id="cameraContainer">
+        <video id="video" autoplay playsinline></video>
+        <div class="camera-controls">
+            <button id="captureBtn" class="btn btn-success" style="width:auto;">Capturar</button>
+            <button id="closeCamBtn" class="btn btn-delete" style="width:auto; font-size: 16px;">Cancelar</button>
+        </div>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
     <script>
-        // URL Base apuntando directamente a tu servidor
         const API_URL = "https://mi-aplicacion-7npp.onrender.com";
 
         const form = document.getElementById('uploadForm');
@@ -49,24 +66,89 @@
         const status = document.getElementById('status');
         const fileList = document.getElementById('fileList');
 
-        // Mostrar la cantidad de archivos seleccionados
-        fileInput.addEventListener('change', () => {
-            const total = fileInput.files.length;
-            if (total > 0) {
-                fileCount.textContent = `${total} archivo(s) seleccionado(s)`;
-            } else {
-                fileCount.textContent = '';
+        // Elementos de la Cámara
+        const openCamBtn = document.getElementById('openCamBtn');
+        const cameraContainer = document.getElementById('cameraContainer');
+        const video = document.getElementById('video');
+        const captureBtn = document.getElementById('captureBtn');
+        const closeCamBtn = document.getElementById('closeCamBtn');
+        const canvas = document.getElementById('canvas');
+        let mediaStream = null;
+
+        // Abrir Cámara
+        openCamBtn.addEventListener('click', async () => {
+            try {
+                // Solicitar cámara trasera por defecto si está disponible (ideal para celulares)
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { ideal: "environment" } },
+                    audio: false
+                });
+                video.srcObject = mediaStream;
+                cameraContainer.style.display = 'flex';
+            } catch (err) {
+                alert("No se pudo acceder a la cámara: " + err.message);
             }
         });
 
-        // Subir múltiples archivos
+        // Cerrar Cámara
+        function stopCamera() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+            cameraContainer.style.display = 'none';
+        }
+
+        closeCamBtn.addEventListener('click', stopCamera);
+
+        // Capturar foto y enviar al servidor
+        captureBtn.addEventListener('click', () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Convertir la captura en una imagen JPG
+            canvas.toBlob(async (blob) => {
+                stopCamera();
+                status.textContent = "Procesando documento escaneado...";
+
+                const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+                const fileName = `Escaner_${timestamp}.jpg`;
+
+                const formData = new FormData();
+                formData.append('files', blob, fileName);
+
+                try {
+                    const res = await fetch(`${API_URL}/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (res.ok) {
+                        status.textContent = "¡Documento escaneado y enviado!";
+                        loadFiles();
+                    } else {
+                        status.textContent = "Error al enviar la captura.";
+                    }
+                } catch (err) {
+                    console.error(err);
+                    status.textContent = "Error de conexión al enviar el escaneo.";
+                }
+            }, 'image/jpeg', 0.9);
+        });
+
+        // Contar archivos subidos mediante input tradicional
+        fileInput.addEventListener('change', () => {
+            const total = fileInput.files.length;
+            fileCount.textContent = total > 0 ? `${total} archivo(s) seleccionado(s)` : '';
+        });
+
+        // Subir archivos mediante el formulario tradicional
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!fileInput.files.length) return;
 
             const formData = new FormData();
-            
-            // Añadir cada archivo al FormData con el nombre del campo 'files'
             for (let i = 0; i < fileInput.files.length; i++) {
                 formData.append('files', fileInput.files[i]);
             }
