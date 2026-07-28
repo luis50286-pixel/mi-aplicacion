@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: gap: content: blob:; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * https://mi-aplicacion-7npp.onrender.com http: https: ws: wss:;">
-    <title>Mi Servidor de Archivos Local</title>
+    <title>Mi Servidor de Archivos y Chat Local</title>
     <style>
         body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; padding: 20px; }
-        .card { background: #1e1e1e; max-width: 450px; margin: 0 auto; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; max-width: 1000px; margin: 0 auto; }
+        .card { background: #1e1e1e; flex: 1; min-width: 320px; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); box-sizing: border-box; }
         input[type="file"] { display: none; }
-        .btn { display: inline-block; background: #007bff; color: white; padding: 12px 20px; margin: 8px 0; border-radius: 8px; cursor: pointer; text-decoration: none; border: none; font-size: 16px; width: 85%; box-sizing: border-box; }
+        .btn { display: inline-block; background: #007bff; color: white; padding: 12px 20px; margin: 8px 0; border-radius: 8px; cursor: pointer; text-decoration: none; border: none; font-size: 16px; width: 100%; box-sizing: border-box; }
         .btn-scan { background: #17a2b8; }
         .btn-success { background: #28a745; }
         .btn-delete { background: #dc3545; color: white; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-left: 10px; }
@@ -23,29 +24,51 @@
         #cameraContainer { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
         video { width: 90%; max-width: 400px; border-radius: 8px; background: #000; }
         .camera-controls { margin-top: 15px; display: flex; gap: 10px; }
+
+        /* Estilos de la Sala de Chat */
+        #chatBox { height: 250px; overflow-y: auto; background: #141414; padding: 10px; border-radius: 6px; display: flex; flex-direction: column; gap: 8px; text-align: left; margin-bottom: 10px; border: 1px solid #333; }
+        .chat-msg { background: #2a2a2a; padding: 8px 12px; border-radius: 8px; font-size: 14px; word-break: break-word; }
+        .chat-msg .username { font-weight: bold; color: #61dafb; font-size: 12px; display: block; margin-bottom: 2px; }
+        .chat-msg .time { font-size: 10px; color: #888; float: right; margin-left: 8px; }
+        .chat-inputs { display: flex; gap: 8px; flex-direction: column; }
+        .chat-inputs input { padding: 10px; border-radius: 6px; border: 1px solid #333; background: #2a2a2a; color: white; outline: none; }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h2>Enviar Archivos / Documentos</h2>
+    <div class="container">
+        <div class="card">
+            <h2>Archivos / Escáner</h2>
 
-        
-        <button id="openCamBtn" class="btn btn-scan">📷 Escanear Documento</button>
+            <button id="openCamBtn" class="btn btn-scan">📷 Escanear Documento</button>
 
-        <form id="uploadForm">
-            <label class="btn">
-                Seleccionar Archivo(s)
-                <input type="file" id="fileInput" multiple>
-            </label>
-            <div id="fileCount"></div>
-            <button type="submit" class="btn btn-success">Enviar a la Red Local</button>
-        </form>
+            <form id="uploadForm">
+                <label class="btn">
+                    Seleccionar Archivo(s)
+                    <input type="file" id="fileInput" multiple>
+                </label>
+                <div id="fileCount"></div>
+                <button type="submit" class="btn btn-success">Enviar a la Red Local</button>
+            </form>
 
-        <p id="status"></p>
+            <p id="status"></p>
 
-        <h3>Archivos Disponibles:</h3>
-        <ul id="fileList"></ul>
+            <h3>Archivos Disponibles:</h3>
+            <ul id="fileList"></ul>
+        </div>
+
+        <div class="card">
+            <h2>💬 Chat en Vivo</h2>
+            <div id="chatBox"></div>
+            
+            <div class="chat-inputs">
+                <input type="text" id="usernameInput" placeholder="Tu nombre / apodo..." maxlength="15">
+                <div style="display: flex; gap: 6px;">
+                    <input type="text" id="messageInput" placeholder="Escribe un mensaje..." style="flex:1;">
+                    <button id="sendMsgBtn" class="btn btn-success" style="width: auto; margin: 0;">Enviar</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="cameraContainer">
@@ -58,16 +81,60 @@
 
     <canvas id="canvas" style="display:none;"></canvas>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-        const API_URL = "https://mi-aplicacion-7npp.onrender.com";
+        const API_URL = "https://mi-aplicacion-7npp.onrender.com"; // Si pruebas en local usa windows.location.origin
 
+        // Inicializar cliente de WebSocket
+        const socket = io();
+
+        // Elementos UI del Chat
+        const chatBox = document.getElementById('chatBox');
+        const usernameInput = document.getElementById('usernameInput');
+        const messageInput = document.getElementById('messageInput');
+        const sendMsgBtn = document.getElementById('sendMsgBtn');
+
+        // Función enviar mensaje
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            const user = usernameInput.value.trim() || 'Anónimo';
+
+            if (!text) return;
+
+            const payload = {
+                user: user,
+                text: text,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+
+            socket.emit('chatMessage', payload);
+            messageInput.value = '';
+        }
+
+        sendMsgBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Escuchar mensajes entrantes desde el servidor
+        socket.on('chatMessage', (data) => {
+            const msgEl = document.createElement('div');
+            msgEl.className = 'chat-msg';
+            msgEl.innerHTML = `
+                <span class="username">${data.user} <span class="time">${data.time}</span></span>
+                ${data.text}
+            `;
+            chatBox.appendChild(msgEl);
+            chatBox.scrollTop = chatBox.scrollHeight; // Auto-scroll hacia el final
+        });
+
+        // --- LÓGICA DE ARCHIVOS Y CÁMARA (Existente) ---
         const form = document.getElementById('uploadForm');
         const fileInput = document.getElementById('fileInput');
         const fileCount = document.getElementById('fileCount');
         const status = document.getElementById('status');
         const fileList = document.getElementById('fileList');
 
-        // Elementos de la Cámara
         const openCamBtn = document.getElementById('openCamBtn');
         const cameraContainer = document.getElementById('cameraContainer');
         const video = document.getElementById('video');
@@ -76,10 +143,8 @@
         const canvas = document.getElementById('canvas');
         let mediaStream = null;
 
-        // Abrir Cámara
         openCamBtn.addEventListener('click', async () => {
             try {
-                // Solicitar cámara trasera por defecto si está disponible (ideal para celulares)
                 mediaStream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: { ideal: "environment" } },
                     audio: false
@@ -91,7 +156,6 @@
             }
         });
 
-        // Cerrar Cámara
         function stopCamera() {
             if (mediaStream) {
                 mediaStream.getTracks().forEach(track => track.stop());
@@ -101,14 +165,12 @@
 
         closeCamBtn.addEventListener('click', stopCamera);
 
-        // Capturar foto y enviar al servidor
         captureBtn.addEventListener('click', () => {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Convertir la captura en una imagen JPG
             canvas.toBlob(async (blob) => {
                 stopCamera();
                 status.textContent = "Procesando documento escaneado...";
@@ -138,13 +200,11 @@
             }, 'image/jpeg', 0.9);
         });
 
-        // Contar archivos subidos mediante input tradicional
         fileInput.addEventListener('change', () => {
             const total = fileInput.files.length;
             fileCount.textContent = total > 0 ? `${total} archivo(s) seleccionado(s)` : '';
         });
 
-        // Subir archivos mediante el formulario tradicional
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!fileInput.files.length) return;
@@ -176,7 +236,6 @@
             }
         });
 
-        // Cargar lista de archivos
         async function loadFiles() {
             try {
                 const res = await fetch(`${API_URL}/files`);
@@ -204,7 +263,6 @@
             }
         }
 
-        // Eliminar archivo
         async function deleteFile(filename) {
             if (!confirm(`¿Seguro que deseas eliminar "${filename}"?`)) return;
 
